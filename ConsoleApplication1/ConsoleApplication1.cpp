@@ -17,7 +17,7 @@
 
 #pragma comment (lib, "Ws2_32.lib")
 
-#define DEFAULT_BUFLEN 1000
+#define DEFAULT_BUFLEN 4096
 #define DEFAULT_PORT "27015"
 
 class TcpServer
@@ -150,6 +150,8 @@ private:
 			{
 				for (const auto f : cbOnDisconnect)
 					f(client_socket);
+				
+				std::cout << "connected" << std::endl;
 
 				this->sockets.erase(std::remove(sockets.begin(), sockets.end(), client_socket), sockets.end());
 				break;
@@ -158,6 +160,8 @@ private:
 			{
 				for (const auto f : cbOnDisconnect)
 					f(client_socket);
+
+				std::cout << "disconnected" << std::endl;
 
 				this->sockets.erase(std::remove(sockets.begin(), sockets.end(), client_socket), sockets.end());
 				break;
@@ -184,19 +188,26 @@ public:
 		}
 	}
 
-	void Send(SOCKET s, std::string message)
+	static void Send(SOCKET s, std::string message)
 	{
+		std::cout << "sending " << message << std::endl;
 		Send(s, message.c_str(), message.size() + 1);
 	}
 
-	void Send(SOCKET s, const char* message, const size_t size)
+	static void Send(SOCKET s, const char* message, const size_t size)
 	{
-		const auto iSendResult = send(s, message, size, 0);
-		if (iSendResult == SOCKET_ERROR)
+		const auto iSendResult = send(s, message, size, MSG_OOB);
+		if (iSendResult != size)
 		{
-			std::cout << "Sending fail !" << std::endl;
+			std::cout << "Sending fail :" << WSAGetLastError() << std::endl;
 			closesocket(s);
 		}
+	}
+
+	static void Close(SOCKET s)
+	{
+		std::cout << "closing" << std::endl;
+		shutdown(s, SD_BOTH);
 	}
 
 };
@@ -209,6 +220,7 @@ public:
 		enum RequestType { GET, POST, UPDATE, UNK };
 
 		SOCKET s;
+		TcpServer *tcp;
 
 		// Header frequently used stuff
 		size_t contentlength{ 0 };
@@ -243,6 +255,10 @@ public:
 
 	void HandleHttpHeaderLine(SOCKET& socket, const std::string &&line)
 	{
+		std::cout << __FUNCTION__ << line << std::endl;
+
+		if (line.size() < 3) return;
+		
 		auto& mr = message_request[socket];
 
 		// message_request[socket].headers.append(line).append("\r\n");
@@ -252,14 +268,12 @@ public:
 		if (idx == std::string::npos) [[unlikely]]
 		{
 
-			mr.s = socket;
-
 			int offset = 0;
 			switch (line[0])
 			{
 			case 'G':
 				mr.type = HttpRequest::RequestType::GET;
-				offset = 4; // +1 for the space after
+				offset = 4; // +1 for the space between the keyword and the path
 				break;
 			case 'P':
 				mr.type = HttpRequest::RequestType::POST;
@@ -280,11 +294,21 @@ public:
 		const auto key = line.substr(0, idx);
 		const auto value = line.substr(idx + 1);
 
-		mr.headers[key] = value;
+		if (key == "Content-Length") [[unlikely]]
+		{
+			mr.contentlength = atoi(value.c_str());
+		}
+		else [[likely]]	// If no particular handler, store it in headers directly
+		{
+			mr.headers[key] = value;
+		}
 	}
 
 	bool OnHttpHeaderMessageReceived(SOCKET socket, std::string &data)
 	{
+
+		std::cout << __FUNCTION__ << data << std::endl;
+		
 		if (data.size() < 2) return false;
 
 		auto datasize = data.size();
@@ -297,9 +321,10 @@ public:
 
 			datasize -= (i + 1);
 
-			if (datasize > 1 && data[1] == '\n') [[unlikely]]
+			if (datasize > 1 && data[1] == '\n') [[unlikely]]  // TODO : if the first \r\n and this one are in separate packets, it wont trigger.
 			{
 				// std::cout << "Done" << std::endl;
+				data = data.substr(2); // skip \r\n
 				return true;
 			}
 
@@ -333,13 +358,16 @@ public:
 				// std::cout << "sending answer" << std::endl;
 				// tcp.Send(socket, "HTTP/1.1 204 No Content \r\nServer-Timing: matthieu;dur=10, thomas;dur=200.2\r\n\r\n");
 
-				if (message_request[socket].headers.contains("Content-Length"))
+				if (message_request[socket].contentlength != 0 && message_request[socket].contentlength > msg->size() + 1)
 				{
-					std::cout << "LEN=" << message_request[socket].headers["Content-Length"] << std::endl;
+					std::cout << "Body not received in total. Waiting. " << msg->size() << "/" << message_request[socket].contentlength << std::endl;
 				}
+
+				message_request[socket].content = *msg;
 				
 				for (const auto& f : cbOnHttpRequestDone)
 					f(message_request[socket]);
+
 				break;
 
 			case IN_BODY:
@@ -416,6 +444,7 @@ public:
 	{
 		using namespace std::placeholders;
 		http.cbOnHttpRequestDone.push_back(std::bind(&WebServer::HandleHttpRequest, this, _1));
+		http.tcp.cbOnConnect.push_back([this](SOCKET s) { http.message_request[s].tcp = &this->http.tcp; http.message_request[s].s = s; });
 
 		http.StartServer(port);
 	}
@@ -428,10 +457,13 @@ public:
 		if (httpReq.type == HttpServer::HttpRequest::RequestType::GET) [[likely]]
 		{
 			std::cout << "get" << std::endl;
+			httpReq.tcp->Send(httpReq.s, "HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length: 12\n\nHello worssssssssssssssssssssssssssssssld!"); // mdlol
 		}
 		else if (httpReq.type == HttpServer::HttpRequest::RequestType::POST)
 		{
-			std::cout << "post" << std::endl;
+			std::cout << "post: " << httpReq.content << std::endl;
+			httpReq.tcp->Send(httpReq.s, "HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length: 12\n\nHello worssssssssssssssssssssssssssssssld!");
+			// httpReq.tcp->Close(httpReq.s);
 		}
 	}
 
