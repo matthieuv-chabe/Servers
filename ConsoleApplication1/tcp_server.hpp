@@ -144,7 +144,7 @@ private:
 				for (const auto& f : cb_on_disconnect)
 					f(client_socket);
 
-				std::cout << "Disconnected !" << std::endl;
+				std::cout << "Disconnected :" << endpoint(client_socket).ip() << std::endl;
 
 				this->sockets_.erase(std::remove(sockets_.begin(), sockets_.end(), client_socket), sockets_.end());
 				break;
@@ -181,7 +181,6 @@ public:
 
 	static void send(const SOCKET s, const std::string&& message)
 	{
-		std::cout << "sending " << message << std::endl;
 		send(s, message.c_str(), message.size() + 1);
 	}
 

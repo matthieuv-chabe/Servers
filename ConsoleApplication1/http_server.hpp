@@ -19,7 +19,7 @@ public:
 		/**
 		 * \brief Header request type (GET, POST, UPDATE, PUT, DELETE, ...)
 		 */
-		enum request_type { get, post, update, unk };
+		enum request_type { get, post, update, put, ddelete, options, unk };
 
 		endpoint ep{0};
 		tcp_server* tcp{};
@@ -31,6 +31,18 @@ public:
 		std::string destination;
 		std::map<std::string, std::string> headers{};
 		std::string content;
+
+		friend std::ostream& operator<<(std::ostream &oss, http_request &req)
+		{
+			oss << "\n-------------- REQ ------------" << std::endl
+				<< "| " << req.ep.ip() << ":" << req.ep.port() << std::endl
+				<< "| " << req.destination << std::endl
+				<< "| " << req.contentlength << std::endl
+				<< "| " << req.content << std::endl
+				<< "--------------------------------" << std::endl;
+
+			return oss;
+		}
 	};
 
 
@@ -103,6 +115,11 @@ private:
 			case 'P' + 'O' * 256: // POST
 				mr.type = http_request::request_type::post;
 				offset = 5;
+				break;
+
+			case 'O' + 'P' * 256: // OPTIONS
+				mr.type = http_request::request_type::options;
+				offset = 7;
 				break;
 				
 			default:	// MEH
