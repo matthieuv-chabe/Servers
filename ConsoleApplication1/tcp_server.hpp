@@ -12,12 +12,13 @@
 
 #pragma comment (lib, "Ws2_32.lib")
 
-constexpr auto DEFAULT_BUFLEN = 1000;
+constexpr auto default_buflen = 1000;
 
 class tcp_server
 {
 private:
 
+	// ReSharper disable once CppUninitializedNonStaticDataMember
 	WSADATA wsa_data_;
 
 	SOCKET listen_socket_ = INVALID_SOCKET;			// The socket used to accept connections.
@@ -34,10 +35,6 @@ public:
 	std::vector<std::function<void(SOCKET, const char* /* message */, size_t /* message len */)>> cb_on_recv;
 
 public:
-
-	tcp_server()
-	{
-	}
 
 	void start_server(const char* port)
 	{
@@ -127,8 +124,8 @@ private:
 
 		while (true)
 		{
-			char recvbuf[DEFAULT_BUFLEN];
-			constexpr size_t recvbuflen = DEFAULT_BUFLEN;
+			char recvbuf[default_buflen];
+			constexpr size_t recvbuflen = default_buflen;
 
 			if (const auto i_result = recv(client_socket, recvbuf, recvbuflen, 0); i_result > 0) [[likely]]
 			{
@@ -151,8 +148,6 @@ private:
 			}
 			else
 			{
-
-
 				for (const auto f : cb_on_disconnect)
 					f(client_socket);
 

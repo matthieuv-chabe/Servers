@@ -104,10 +104,10 @@ private:
 		// For the "GET /" line that doesn't contain ":" char
 		if (idx == std::string::npos) [[unlikely]]
 		{
-			size_t offset = 0;
+			size_t offset;
 			switch (*reinterpret_cast<const uint16_t*>(&line[0]))
 			{
-			case 'G' + 'E' * 256: // GET - 256 is the max value for a char from "line". If line is a wstring, 
+			case 'G' + 'E' * 256: // GET - 256 is the max value for a char from "line". If line is a wstring, then it's 65536
 				mr.type = http_request::request_type::get;
 				offset = 4; // +1 for the space between the keyword and the path
 				break;
@@ -152,20 +152,20 @@ private:
 
 		if (data.size() < 2) return false;
 
-		auto datasize = data.size();
-		for (auto i = 1; i < datasize; ++i)
+		auto data_size = data.size();
+		for (size_t i = 1; i < data_size; ++i)
 		{
 			if (data[i] != '\n') [[likely]] continue;
 
-			if (datasize > 2)   // Most of the time, some data will be received for the header
+			if (data_size > 2)   // Most of the time, some data will be received for the header
 			{
 				[[likely]]
 				handle_http_header_line(socket, data.substr(0, i - 1)); // Skip the \r before \n. There'ep ALWAYS a \r before.
 				data = data.substr(i + 1);
-				datasize -= (i + 1);
+				data_size -= (i + 1);
 			}
 
-			if (datasize > 1 && data[1] == '\n')
+			if (data_size > 1 && data[1] == '\n')
 			{
 				[[unlikely]]
 				data = data.substr(2); // skip \r\n

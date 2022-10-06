@@ -15,6 +15,7 @@ public:
 
 	endpoint(const SOCKET in) : s(in) {}
 
+	[[nodiscard]]
 	SOCKET data() const
 	{
 		return s;
